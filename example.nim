@@ -1,4 +1,4 @@
-import gtk2, genui
+import gtk2, gtkgenui
 
 init(nil, nil)
 
