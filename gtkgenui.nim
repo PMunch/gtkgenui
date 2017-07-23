@@ -1,5 +1,5 @@
 import macros, deques
-from strutils import toLower
+from strutils import toLowerAscii
 
 proc `[]`(s: NimNode, x: Slice[int]): seq[NimNode] =
   ## slice operation for NimNodes.
@@ -46,14 +46,13 @@ proc parseNode(node: NimNode): ParsedWidget =
     else:
       toParse.addFirst((pointed: pointed, node: cnode[0]))
   while cnode != nil:
-    echo "Parsing: " & $cnode.kind & ", pointed: " & $pointed
     if cnode.len != 0 and cnode[cnode.high].kind == nnkStmtList:
       toParse.addFirst((pointed: false, node: cnode[cnode.high]))
       cnode.del cnode.high
     case cnode.kind:
     of nnkInfix:
       if cnode[0].ident != !"->":
-        echo "ERROR"
+        error("Unrecognized format near: \"" & $cnode[0].ident & "\"", cnode[0])
       toParse.addFirst((pointed: true, node: cnode[2]))
       toParse.addFirst((pointed: false, node: cnode[1]))
     of nnkCurlyExpr:
@@ -62,7 +61,7 @@ proc parseNode(node: NimNode): ParsedWidget =
     of nnkCurly:
       result.pureCode = cnode[0]
     of nnkBracketExpr:
-      result.packArgs = cnode[1..cnode.high]
+      result.packArgs = cnode[1 .. cnode.high]
       checkName()
     of nnkBracket:
       result.packArgs = cnode[0 .. ^1]
@@ -72,7 +71,7 @@ proc parseNode(node: NimNode): ParsedWidget =
       else:
         result.initParameters = cnode[0 .. ^1]
     of nnkCall:
-      result.initParameters = cnode[1..cnode.high]
+      result.initParameters = cnode[1 .. cnode.high]
       checkName()
     of nnkCommand:
       if cnode[cnode.high].kind == nnkIdent:
@@ -85,6 +84,7 @@ proc parseNode(node: NimNode): ParsedWidget =
     of nnkStmtList:
       result.children = result.parseChildren cnode
     else:
+      warning("Found unknown node, this could be an error")
       for child in countdown(cnode.high, 0):
         toParse.addFirst((pointed: pointed, node: cnode[child]))
     if toParse.len != 0:
@@ -94,12 +94,10 @@ proc parseNode(node: NimNode): ParsedWidget =
       discard toParse.popFirst()
     else:
       cnode = nil
-  echo "Returning"
 
 proc createWidget(widget: ParsedWidget, parent: NimNode = nil): NimNode =
   result = newStmtList()
-  echo widget.name
-  var call = newCall(widget.name.toLower & "_new")
+  var call = newCall(widget.name.toLowerAscii & "_new")
   for param in widget.initParameters:
     call.add param
   widget.generatedSym = genSym(nskVar)
@@ -158,19 +156,17 @@ proc createWidget(widget: ParsedWidget, parent: NimNode = nil): NimNode =
 
 macro genui*(widgetCode: untyped): untyped =
   ## Macro to create Gtk2 code from the genui syntax (see documentation)
-  echo widgetCode.treeRepr
   let parsed = nil.parseChildren(widgetCode)
   result = newStmtList()
   for widget in parsed:
     result.add createWidget(widget)
-  echo result.repr
+  hint(lineinfo(widgetCode) & " GenUI macro generated this Gtk code:" & result.repr)
 
 macro addElements*(parent:untyped, widgetCode: untyped): untyped=
   ## Macro to create Gtk2 code from the genui syntax (see documentation) and create add calls for the resulting widgets for the given parent
-  echo widgetCode.treeRepr
   let parsed = nil.parseChildren(widgetCode)
   result = newStmtList()
   for widget in parsed:
     result.add createWidget(widget, parent)
-  echo result.repr
+  hint(lineinfo(widgetCode) & " GenUI macro generated this Gtk code:" & result.repr)
 
