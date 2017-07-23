@@ -160,7 +160,8 @@ macro genui*(widgetCode: untyped): untyped =
   result = newStmtList()
   for widget in parsed:
     result.add createWidget(widget)
-  hint(lineinfo(widgetCode) & " GenUI macro generated this Gtk code:" & result.repr)
+  when defined(debug):
+    hint(lineinfo(widgetCode) & " GenUI macro generated this Gtk code:" & result.repr)
 
 macro addElements*(parent:untyped, widgetCode: untyped): untyped=
   ## Macro to create Gtk2 code from the genui syntax (see documentation) and create add calls for the resulting widgets for the given parent
@@ -168,5 +169,6 @@ macro addElements*(parent:untyped, widgetCode: untyped): untyped=
   result = newStmtList()
   for widget in parsed:
     result.add createWidget(widget, parent)
-  hint(lineinfo(widgetCode) & " GenUI macro generated this Gtk code:" & result.repr)
+  when defined(debug):
+    hint(lineinfo(widgetCode) & " GenUI macro generated this Gtk code:" & result.repr)
 
