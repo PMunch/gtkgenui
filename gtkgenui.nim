@@ -1,12 +1,16 @@
 import macros, deques
-from strutils import toLowerAscii
+from strutils import toLowerAscii, strip, split
 
 proc `[]`(s: NimNode, x: Slice[int]): seq[NimNode] =
   ## slice operation for NimNodes.
   var a = x.a
   var L = x.b - a + 1
   newSeq(result, L)
-  for i in 0.. <L: result[i] = s[i + a]
+  for i in 0 ..< L: result[i] = s[i + a]
+
+proc `[]`(s: NimNode, x: HSlice[int, BackwardsIndex]): seq[NimNode] =
+  s[x.a .. s.len - x.b.int]
+
 
 proc high(s: NimNode):int =
   ## high operation for NimNodes
@@ -38,11 +42,11 @@ proc parseNode(node: NimNode): ParsedWidget =
     cnode = node
     pointed = false
   if cnode.kind == nnkIdent:
-    result.name = $cnode.ident
+    result.name = $cnode
     cnode = nil
   template checkName() =
     if cnode[0].kind == nnkIdent:
-      result.name = $cnode[0].ident
+      result.name = $cnode[0]
     else:
       toParse.addFirst((pointed: pointed, node: cnode[0]))
   while cnode != nil:
@@ -51,8 +55,8 @@ proc parseNode(node: NimNode): ParsedWidget =
       cnode.del cnode.high
     case cnode.kind:
     of nnkInfix:
-      if cnode[0].ident != !"->":
-        error("Unrecognized format near: \"" & $cnode[0].ident & "\"", cnode[0])
+      if $cnode[0] != "->":
+        error("Unrecognized format near: \"" & $cnode[0] & "\"", cnode[0])
       toParse.addFirst((pointed: true, node: cnode[2]))
       toParse.addFirst((pointed: false, node: cnode[1]))
     of nnkCurlyExpr:
@@ -75,7 +79,7 @@ proc parseNode(node: NimNode): ParsedWidget =
       checkName()
     of nnkCommand:
       if cnode[cnode.high].kind == nnkIdent:
-        result.name = $cnode[cnode.high].ident
+        result.name = $cnode[cnode.high]
         for i in countdown(cnode.high-1, 0):
           toParse.addFirst((pointed: pointed, node: cnode[i]))
       else:
@@ -108,30 +112,34 @@ proc createWidget(widget: ParsedWidget, parent: NimNode = nil): NimNode =
       call
     )
   )
-  proc replacePlaceholder(n: NimNode): bool =
+  proc replacePlaceholder(n: NimNode) =
     for i in 0 .. n.high:
       let child = n[i]
       if child.kind == nnkPrefix and child[0].kind == nnkIdent and child[1].kind == nnkIdent and
-        child[0].ident == !"@" and (child[1].ident == !"result" or child[1].ident == !"r"):
+        child[0].eqIdent("@") and (child[1].eqIdent("result") or child[1].eqIdent("r")):
           n[i] = widget.generatedSym
-          return true
-      let done = child.replacePlaceholder()
-      if done:
-        return true
+          return
+      child.replacePlaceholder()
 
   for child in widget.children:
     for node in createWidget(child, widget.generatedSym):
       result.add node
 
   if widget.pureCode != nil:
-    if widget.pureCode.kind == nnkStrLit:
-      widget.pureCode = widget.pureCode.strVal.parseExpr
-    widget.pureCode = widget.pureCode.repr.parseExpr
-    discard replacePlaceholder(widget.pureCode)
+    var l =
+      if widget.pureCode.kind == nnkStrLit:
+        widget.pureCode.strVal.split(";")
+      else:
+        widget.pureCode.repr.split("\n")
+    widget.pureCode = newStmtList()
+    for line in l:
+      echo line.strip()
+      widget.pureCode.add line.strip().parseStmt
+    replacePlaceholder(widget.pureCode)
     result.add(widget.pureCode)
 
   if parent != nil:
-    if widget.packArgs == nil:
+    if widget.packArgs.len == 0:
       result.add newCall("add", parent, widget.generatedSym)
     else:
       var packCall = newCall("pack_start", parent, widget.generatedSym)
@@ -139,20 +147,19 @@ proc createWidget(widget: ParsedWidget, parent: NimNode = nil): NimNode =
         packCall.add packArg
       result.add packCall
 
-  if widget.eventBindings != nil:
-    for binding in widget.eventBindings:
-      result.add nnkDiscardStmt.newTree(
+  for binding in widget.eventBindings:
+    result.add nnkDiscardStmt.newTree(
+      newCall(
+        "signal_connect",
+        widget.generatedSym,
+        binding[0],
         newCall(
-          "signal_connect",
-          widget.generatedSym,
-          binding[0],
-          newCall(
-            !"SIGNAL_FUNC",
-            binding[1]
-          ),
-          newNilLit()
-        )
+          newIdentNode("SIGNAL_FUNC"),
+          binding[1]
+        ),
+        newNilLit()
       )
+    )
 
 macro genui*(widgetCode: untyped): untyped =
   ## Macro to create Gtk2 code from the genui syntax (see documentation)
