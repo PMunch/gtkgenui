@@ -1,4 +1,4 @@
-import macros, deques
+import macros, stack
 from strutils import toLowerAscii, strip, split
 
 proc `[]`(s: NimNode, x: Slice[int]): seq[NimNode] =
@@ -38,7 +38,7 @@ proc parseChildren(p: ParsedWidget, stmtlist:NimNode): seq[ParsedWidget] =
 proc parseNode(node: NimNode): ParsedWidget =
   new result
   var
-    toParse = initDeque[tuple[pointed: bool, node: NimNode]]()
+    toParse = newStack[tuple[pointed: bool, node: NimNode]]()
     cnode = node
     pointed = false
   if cnode.kind == nnkIdent:
@@ -48,17 +48,17 @@ proc parseNode(node: NimNode): ParsedWidget =
     if cnode[0].kind == nnkIdent:
       result.name = $cnode[0]
     else:
-      toParse.addFirst((pointed: pointed, node: cnode[0]))
+      toParse.push((pointed: pointed, node: cnode[0]))
   while cnode != nil:
     if cnode.len != 0 and cnode[cnode.high].kind == nnkStmtList:
-      toParse.addFirst((pointed: false, node: cnode[cnode.high]))
+      toParse.push((pointed: false, node: cnode[cnode.high]))
       cnode.del cnode.high
     case cnode.kind:
     of nnkInfix:
       if $cnode[0] != "->":
         error("Unrecognized format near: \"" & $cnode[0] & "\"", cnode[0])
-      toParse.addFirst((pointed: true, node: cnode[2]))
-      toParse.addFirst((pointed: false, node: cnode[1]))
+      toParse.push((pointed: true, node: cnode[2]))
+      toParse.push((pointed: false, node: cnode[1]))
     of nnkCurlyExpr:
       result.pureCode = cnode[1]
       checkName()
@@ -81,21 +81,20 @@ proc parseNode(node: NimNode): ParsedWidget =
       if cnode[cnode.high].kind == nnkIdent:
         result.name = $cnode[cnode.high]
         for i in countdown(cnode.high-1, 0):
-          toParse.addFirst((pointed: pointed, node: cnode[i]))
+          toParse.push((pointed: pointed, node: cnode[i]))
       else:
         for i in countdown(cnode.high, 0):
-          toParse.addFirst((pointed: pointed, node: cnode[i]))
+          toParse.push((pointed: pointed, node: cnode[i]))
     of nnkStmtList:
       result.children = result.parseChildren cnode
     else:
       warning("Found unknown node, this could be an error")
       for child in countdown(cnode.high, 0):
-        toParse.addFirst((pointed: pointed, node: cnode[child]))
+        toParse.push((pointed: pointed, node: cnode[child]))
     if toParse.len != 0:
-      var step = toParse.peekFirst()
+      var step = toParse.pop()
       cnode = step.node
       pointed = step.pointed
-      discard toParse.popFirst()
     else:
       cnode = nil
 
@@ -133,7 +132,6 @@ proc createWidget(widget: ParsedWidget, parent: NimNode = nil): NimNode =
         widget.pureCode.repr.split("\n")
     widget.pureCode = newStmtList()
     for line in l:
-      echo line.strip()
       widget.pureCode.add line.strip().parseStmt
     replacePlaceholder(widget.pureCode)
     result.add(widget.pureCode)
