@@ -1,4 +1,4 @@
-import macros, stack
+import macros, private/stack
 from strutils import toLowerAscii, strip, split
 
 proc `[]`(s: NimNode, x: Slice[int]): seq[NimNode] =
