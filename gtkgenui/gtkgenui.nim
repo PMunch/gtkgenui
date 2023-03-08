@@ -69,7 +69,7 @@ proc parseNode(node: NimNode): ParsedWidget =
       checkName()
     of nnkBracket:
       result.packArgs = cnode[0 .. ^1]
-    of nnkPar:
+    of nnkPar, nnkTupleConstr:
       if pointed:
         result.eventBindings = cnode[0 .. ^1]
       else:

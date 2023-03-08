@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.2.0"
+version       = "0.2.1"
 author        = "Peter Munch-Ellingsen"
 description   = "Genui is a DSL macro for creating graphical user interfaces. This version is for the Gtk toolkit."
 license       = "MIT"
